@@ -14,4 +14,7 @@
         completions."
     </string>
     <string name="facebook_app_id">428677433976174</string>
+    <string name="loading">Loading..</string>
+    <string name="gcm_send_message">GCM MSG Sent</string>
+    <string name="token_error_message">Error in receiving GCM Token</string>
 </resources>

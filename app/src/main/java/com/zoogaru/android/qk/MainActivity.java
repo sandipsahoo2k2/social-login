@@ -3,12 +3,19 @@ package com.zoogaru.android.qk;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
+import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.app.LoaderManager.LoaderCallbacks;
 import android.content.ContentResolver;
@@ -34,6 +41,8 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -45,6 +54,8 @@ import com.facebook.FacebookCallback;
 import com.facebook.FacebookException;
 import com.facebook.FacebookSdk;
 import com.facebook.CallbackManager;
+import com.facebook.GraphRequest;
+import com.facebook.GraphResponse;
 import com.facebook.Profile;
 import com.facebook.ProfileTracker;
 import com.facebook.login.LoginResult;
@@ -54,17 +65,21 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.auth.api.signin.GoogleSignInResult;
 import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.common.SignInButton;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import static android.Manifest.permission.READ_CONTACTS;
 
 /**
  * A login screen that offers login via email/password.
  */
-public class LoginActivity extends AppCompatActivity  implements GoogleApiClient.OnConnectionFailedListener, LoaderCallbacks<Cursor>, OnClickListener {
+public class MainActivity extends AppCompatActivity  implements GoogleApiClient.OnConnectionFailedListener, LoaderCallbacks<Cursor>, OnClickListener {
 
     /**
      * Id to identity READ_CONTACTS permission request.
@@ -80,6 +95,7 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
     };
     private static final String TAG = "Quickoo";
     private static final int RC_SIGN_IN = 9001;
+    private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
     /**
      * Keep track of the login task to ensure we can cancel it if requested.
      */
@@ -98,6 +114,10 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
     LoginButton loginButton;
     private TextView info;
     GoogleApiClient mGoogleApiClient;
+    private ProgressDialog mProgressDialog;
+
+    private BroadcastReceiver mRegistrationBroadcastReceiver;
+    private boolean isReceiverRegistered;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -163,34 +183,44 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
         };
 
         if(accessToken == null) {
-            loginButton.setReadPermissions("public_profile", "user_friends");
+            loginButton.setReadPermissions("email", "public_profile", "user_friends");
             loginButton.registerCallback(callbackManager, new FacebookCallback<LoginResult>() {
                 @Override
                 public void onSuccess(LoginResult loginResult) {
-                    // App code
-                    info.setText(
-                            "User ID: "
-                                    + loginResult.getAccessToken().getUserId()
-                                    + "\n" +
-                                    "Auth Token: "
-                                    + loginResult.getAccessToken().getToken()
-                    );
+
+                    GraphRequest request = GraphRequest.newMeRequest(loginResult.getAccessToken(),
+                            new GraphRequest.GraphJSONObjectCallback() {
+
+                        @Override
+                        public void onCompleted(JSONObject object, GraphResponse response) {
+                            Log.i("LoginActivity", response.toString());
+                            // Get facebook data from login
+                            Bundle bFacebookData = getFacebookData(object);
+                            handleCommonSignIn(true, bFacebookData.get("email").toString());
+                        }
+                    });
+
+                    Bundle parameters = new Bundle();
+                    parameters.putString("fields", "id, first_name, last_name, email,gender, birthday, location");
+                    request.setParameters(parameters);
+                    request.executeAsync();
 
                     //Profile myprofile = Profile.getCurrentProfile();
                     //myprofile.getId();
-
                 }
 
                 @Override
                 public void onCancel() {
                     // App code
+                    handleCommonSignIn(false, null);
                     info.setText("Login attempt canceled.");
+
                 }
 
                 @Override
                 public void onError(FacebookException exception) {
                     // App code
-                    info.setText("Login attempt failed.");
+                    handleCommonSignIn(false, null);
                 }
             });
         }
@@ -223,6 +253,75 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
         signInButton.setScopes(gso.getScopeArray());
         signInButton.setOnClickListener(this);
 
+        mRegistrationBroadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                SharedPreferences sharedPreferences =
+                        PreferenceManager.getDefaultSharedPreferences(context);
+                boolean sentToken = sharedPreferences
+                        .getBoolean(QKPreferences.SENT_TOKEN_TO_SERVER, false);
+                if (sentToken) {
+                    info.setText(getString(R.string.gcm_send_message));
+                } else {
+                    info.setText(getString(R.string.token_error_message));
+                }
+            }
+        };
+
+        // Registering BroadcastReceiver
+        registerReceiver();
+    }
+
+    private Bundle getFacebookData(JSONObject object) {
+
+        Bundle bundle = null;
+        try {
+             bundle = new Bundle();
+            String id = object.getString("id");
+
+            URL profile_pic = new URL("https://graph.facebook.com/" + id + "/picture?width=200&height=150");
+            Log.i("profile_pic", profile_pic + "");
+            bundle.putString("profile_pic", profile_pic.toString());
+
+            bundle.putString("idFacebook", id);
+            if (object.has("first_name"))
+                bundle.putString("first_name", object.getString("first_name"));
+            if (object.has("last_name"))
+                bundle.putString("last_name", object.getString("last_name"));
+            if (object.has("email"))
+                bundle.putString("email", object.getString("email"));
+            if (object.has("gender"))
+                bundle.putString("gender", object.getString("gender"));
+            if (object.has("birthday"))
+                bundle.putString("birthday", object.getString("birthday"));
+            if (object.has("location"))
+                bundle.putString("location", object.getJSONObject("location").getString("name"));
+
+            return bundle;
+        } catch (JSONException e) {
+            e.printStackTrace();
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+        return bundle;
+    }
+
+    private void showProgressDialog(boolean show) {
+        if(show) {
+            if (mProgressDialog == null) {
+                mProgressDialog = new ProgressDialog(this);
+                mProgressDialog.setMessage(getString(R.string.loading));
+                mProgressDialog.setIndeterminate(true);
+            }
+
+            mProgressDialog.show();
+        }
+        else
+        {
+            if (mProgressDialog != null && mProgressDialog.isShowing()) {
+                mProgressDialog.hide();
+            }
+        }
     }
 
     private void printKeyHash(){
@@ -258,9 +357,27 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
         if (result.isSuccess()) {
             // Signed in successfully, show authenticated UI.
             GoogleSignInAccount acct = result.getSignInAccount();
-            info.setText(acct.getEmail());
+            handleCommonSignIn(true, acct.getEmail());
         } else {
-            // Signed out, show unauthentica
+            // Signed out, show unauthentic
+            handleCommonSignIn(false, null);
+        }
+    }
+
+    private void handleCommonSignIn(boolean success, String anEmail)
+    {
+        showProgressDialog(false);
+        if(success) {
+            info.setText(anEmail);
+            if (checkPlayServices()) {
+                // Start IntentService to register this application with GCM.
+                Intent intent = new Intent(this, RegistrationIntentService.class);
+                startService(intent);
+            }
+        }
+        else
+        {
+            info.setText("Error in signing");
         }
     }
 
@@ -387,14 +504,16 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
             int shortAnimTime = getResources().getInteger(android.R.integer.config_shortAnimTime);
 
+            /*
             mLoginFormView.setVisibility(show ? View.GONE : View.VISIBLE);
+
             mLoginFormView.animate().setDuration(shortAnimTime).alpha(
                     show ? 0 : 1).setListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
                     mLoginFormView.setVisibility(show ? View.GONE : View.VISIBLE);
                 }
-            });
+            });*/
 
             mProgressView.setVisibility(show ? View.VISIBLE : View.GONE);
             mProgressView.animate().setDuration(shortAnimTime).alpha(
@@ -408,7 +527,7 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
             // The ViewPropertyAnimator APIs are not available, so simply show
             // and hide the relevant UI components.
             mProgressView.setVisibility(show ? View.VISIBLE : View.GONE);
-            mLoginFormView.setVisibility(show ? View.GONE : View.VISIBLE);
+            //mLoginFormView.setVisibility(show ? View.GONE : View.VISIBLE);
         }
     }
 
@@ -455,6 +574,7 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
         Log.d(TAG, "onConnectionFailed:" + connectionResult);
+        showProgressDialog(false);
     }
 
     @Override
@@ -466,6 +586,7 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
     private void signIn() {
         Intent signInIntent = Auth.GoogleSignInApi.getSignInIntent(mGoogleApiClient);
         startActivityForResult(signInIntent, RC_SIGN_IN);
+        showProgressDialog(true);
     }
 
     private void signOut() {
@@ -478,6 +599,43 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
                         // [END_EXCLUDE]
                     }
                 });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        registerReceiver();
+    }
+
+    @Override
+    protected void onPause() {
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mRegistrationBroadcastReceiver);
+        isReceiverRegistered = false;
+        super.onPause();
+    }
+
+    private void registerReceiver(){
+        if(!isReceiverRegistered) {
+            LocalBroadcastManager.getInstance(this).registerReceiver(mRegistrationBroadcastReceiver,
+                    new IntentFilter(QKPreferences.REGISTRATION_COMPLETE));
+            isReceiverRegistered = true;
+        }
+    }
+
+    private boolean checkPlayServices() {
+        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
+        int resultCode = apiAvailability.isGooglePlayServicesAvailable(this);
+        if (resultCode != ConnectionResult.SUCCESS) {
+            if (apiAvailability.isUserResolvableError(resultCode)) {
+                apiAvailability.getErrorDialog(this, resultCode, PLAY_SERVICES_RESOLUTION_REQUEST)
+                        .show();
+            } else {
+                Log.i(TAG, "This device is not supported.");
+                finish();
+            }
+            return false;
+        }
+        return true;
     }
 
     private interface ProfileQuery {
@@ -523,7 +681,7 @@ public class LoginActivity extends AppCompatActivity  implements GoogleApiClient
     private void addEmailsToAutoComplete(List<String> emailAddressCollection) {
         //Create adapter to tell the AutoCompleteTextView what to show in its dropdown list.
         ArrayAdapter<String> adapter =
-                new ArrayAdapter<>(LoginActivity.this,
+                new ArrayAdapter<>(MainActivity.this,
                         android.R.layout.simple_dropdown_item_1line, emailAddressCollection);
 
         mEmailView.setAdapter(adapter);
