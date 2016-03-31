@@ -23,6 +23,10 @@
             "package_name": "com.zoogaru.android.qk",
             "certificate_hash": "60AE6FB8BB19DE50EBCCED1BFE5777C381D3F8FF"
           }
+        },
+        {
+          "client_id": "1045702756514-n5nm8kaargavidtkk5c17vi9qf304oeb.apps.googleusercontent.com",
+          "client_type": 3
         }
       ],
       "api_key": [],
@@ -31,7 +35,7 @@
           "status": 1
         },
         "cloud_messaging_service": {
-          "status": 1,
+          "status": 2,
           "apns_config": []
         },
         "appinvite_service": {
