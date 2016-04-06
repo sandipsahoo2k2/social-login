@@ -13,8 +13,25 @@
     <string name="permission_rationale">"Contacts permissions are needed for providing email
         completions."
     </string>
-    <string name="facebook_app_id">428677433976174</string>
+    <string name="facebook_app_id">YOUR_APP_ID</string>
     <string name="loading">Loading..</string>
     <string name="gcm_send_message">GCM MSG Sent</string>
     <string name="token_error_message">Error in receiving GCM Token</string>
+    <string name="body_what">Add a short summery</string>
+    <string name="title_what">Title of your bell</string>
+    <string name="action_ring">Ring the bell</string>
+    <string name="action_where">Where to ring?</string>
+    <string name="action_when">Tell us when ?</string>
+    <string name="tag_text">#Tag</string>
+    <string name="subtag_text">#SubTag</string>
+    <string name="title_howmuch">How much your bell costs?</string>
+    <string name="title_where">Where will the bell ring?</string>
+    <string name="title_when">When will the bell ring ?</string>
+    <string name="from_time">From time (24HR)</string>
+    <string name="to_time">To time (24HR)</string>
+    <string name="action_howmuch">Tell us how much ?</string>
+    <string name="price_text">Add a number</string>
+    <string name="flat_price_text">Flat price</string>
+    <string name="discounted_price_text">Discount (%)</string>
+    <string name="free_price_text">Ohh it\'s free !</string>
 </resources>
